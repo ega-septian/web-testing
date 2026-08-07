@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Uploaded files (runtime data, not source)
+uploads/*
+!uploads/.gitkeep
+
+# Build artifacts
+/api
+/bin
+*.exe
+*.test
+
+# OS
+.DS_Store

@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: teststore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: teststore
+      POSTGRES_PASSWORD: teststore
+      POSTGRES_DB: teststore
+    ports:
+      - "5432:5432"
+    volumes:
+      - teststore_pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teststore -d teststore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  teststore_pgdata:
