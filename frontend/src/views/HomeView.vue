@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { assetFileUrl, getAsset, getProducts, getDressStyles } from '../lib/api'
+import { assetFileUrl, getAssets, getProducts, getDressStyles } from '../lib/api'
+import ProductCard from '../components/ProductCard.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -13,54 +14,59 @@ const topSelling = ref([])
 const dressStyles = ref([])
 
 onMounted(async () => {
+  // One call covers every homepage image (hero banner + each dress-style
+  // photo) — looked up by key locally, instead of a separate GET per image.
+  let assetsByKey = {}
   try {
-    const asset = await getAsset('hero_banner')
-    heroBannerUrl.value = assetFileUrl(asset)
+    const assets = await getAssets()
+    assetsByKey = Object.fromEntries(assets.map((asset) => [asset.key, asset]))
   } catch {
-    heroBannerUrl.value = null
+    assetsByKey = {}
   }
+
+  heroBannerUrl.value = assetsByKey.hero_banner ? assetFileUrl(assetsByKey.hero_banner) : null
 
   // Each catalog section fetches independently, so one failing (or the
   // backend being briefly unavailable) doesn't take the whole page down —
   // the section just renders empty instead of throwing.
   try {
-    newArrivals.value = await getProducts('new_arrivals')
+    newArrivals.value = await getProducts({ sort: 'newest' })
   } catch {
     newArrivals.value = []
   }
 
   try {
-    topSelling.value = await getProducts('top_selling')
+    topSelling.value = await getProducts({ sort: 'best_selling' })
   } catch {
     topSelling.value = []
   }
 
   try {
     const styles = await getDressStyles()
-    // Each category's photo is a separate asset, keyed by naming convention
-    // (e.g. "Casual" -> "hero_casual_browse"). Fetched per-style so a missing
-    // photo for one category just falls back to a plain card, not a broken page.
-    dressStyles.value = await Promise.all(
-      styles.map(async (style) => {
-        try {
-          const asset = await getAsset(`hero_${style.name.toLowerCase()}_browse`)
-          return { ...style, imageUrl: assetFileUrl(asset) }
-        } catch {
-          return { ...style, imageUrl: null }
-        }
-      })
-    )
+    // Each category's photo follows a naming convention (e.g. "Casual" ->
+    // "hero_casual_browse") — missing photo for one category just falls back
+    // to a plain card, not a broken page.
+    dressStyles.value = styles.map((style) => {
+      const asset = assetsByKey[`hero_${style.name.toLowerCase()}_browse`]
+      return { ...style, imageUrl: asset ? assetFileUrl(asset) : null }
+    })
   } catch {
     dressStyles.value = []
   }
 })
 
 // There's no separate authenticated page to send an already-logged-in user
-// to anymore — the homepage itself reflects the logged-in state (see the
-// navbar), so this CTA has nowhere left to go once authenticated.
+// to anymore — the site itself reflects the logged-in state (see Navbar.vue),
+// so this CTA has nowhere left to go once authenticated.
 function goToCta() {
   if (auth.isAuthenticated) return
   router.push({ name: 'login' })
+}
+
+// "Shop Now" browses the catalog regardless of auth state — unlike the CTAs
+// above, it was never really about login.
+function goToShop() {
+  router.push({ name: 'shop' })
 }
 
 const testimonials = [
@@ -92,45 +98,6 @@ const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
       <button data-testid="home-promo-bar-cta" class="ml-1 font-semibold underline underline-offset-2" @click="goToCta">Daftar Sekarang</button>
     </div>
 
-    <!-- Navbar -->
-    <header data-testid="home-navbar" class="border-b border-slate-200">
-      <div class="mx-auto flex max-w-7xl items-center gap-6 px-6 py-4">
-        <div data-testid="home-navbar-logo" class="flex items-center gap-1 text-xl font-black tracking-tight">
-          SHOP<span class="text-slate-400">.CO</span>
-        </div>
-
-        <nav class="hidden items-center gap-6 text-sm font-medium text-slate-600 lg:flex">
-          <a href="#shop" data-testid="home-nav-link-shop" class="hover:text-black">Shop</a>
-          <a href="#sale" data-testid="home-nav-link-sale" class="hover:text-black">On Sale</a>
-          <a href="#new" data-testid="home-nav-link-new-arrivals" class="hover:text-black">New Arrivals</a>
-          <a href="#brands" data-testid="home-nav-link-brands" class="hover:text-black">Brands</a>
-        </nav>
-
-        <div class="ml-auto flex flex-1 items-center gap-4 lg:flex-none">
-          <div class="hidden flex-1 items-center rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-500 sm:flex lg:w-72 lg:flex-none">
-            <span class="mr-2">🔍</span>
-            <input
-              type="text"
-              data-testid="home-search-input"
-              placeholder="Cari produk..."
-              class="w-full bg-transparent outline-none placeholder:text-slate-400"
-            />
-          </div>
-          <button data-testid="home-cart-button" class="text-xl" title="Keranjang">🛒</button>
-          <button
-            v-if="!auth.isAuthenticated"
-            data-testid="home-navbar-cta"
-            class="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            @click="goToCta"
-          >
-            Masuk
-          </button>
-          <!-- Logged in: no dedicated account page yet, icon is a placeholder for now -->
-          <button v-else data-testid="home-account-button" class="text-xl" title="Akun">👤</button>
-        </div>
-      </div>
-    </header>
-
     <!-- Hero -->
     <section data-testid="home-hero-section" class="relative overflow-hidden bg-cream">
       <div class="mx-auto max-w-7xl px-6 py-16 lg:py-24">
@@ -145,7 +112,7 @@ const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
           <button
             data-testid="home-hero-cta"
             class="mt-8 rounded-full bg-black px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            @click="goToCta"
+            @click="goToShop"
           >
             Shop Now
           </button>
@@ -209,52 +176,38 @@ const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
       <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">NEW ARRIVALS</h2>
 
       <div class="mt-10 grid grid-cols-2 gap-5 lg:grid-cols-4">
-        <div v-for="(p, index) in newArrivals" :key="p.id" :data-testid="`home-new-arrival-card-${index}`" class="group">
-          <div class="flex aspect-square items-center justify-center rounded-xl bg-cream text-5xl">
-            {{ p.icon }}
-          </div>
-          <p data-testid="product-name" class="mt-3 text-sm font-medium">{{ p.name }}</p>
-          <div class="mt-1 flex items-center gap-1 text-xs text-slate-500">
-            <span class="text-amber-400">★</span>{{ p.rating }}/5
-          </div>
-          <div class="mt-1 flex items-center gap-2 text-sm">
-            <span data-testid="product-price" class="font-semibold">${{ p.price }}</span>
-            <span v-if="p.old_price" class="text-slate-400 line-through">${{ p.old_price }}</span>
-          </div>
-        </div>
+        <ProductCard
+          v-for="(p, index) in newArrivals"
+          :key="p.id"
+          :product="p"
+          :testid="`home-new-arrival-card-${index}`"
+        />
       </div>
 
       <div class="mt-10 text-center">
-        <button data-testid="home-new-arrivals-view-all" class="rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium transition hover:bg-slate-50">
+        <RouterLink :to="{ name: 'shop' }" data-testid="home-new-arrivals-view-all" class="rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium transition hover:bg-slate-50">
           View All
-        </button>
+        </RouterLink>
       </div>
     </section>
 
     <!-- Top selling -->
-    <section id="shop" data-testid="home-top-selling-section" class="mx-auto max-w-7xl px-6 pb-16">
+    <section id="top-selling" data-testid="home-top-selling-section" class="mx-auto max-w-7xl px-6 pb-16">
       <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">TOP SELLING</h2>
 
       <div class="mt-10 grid grid-cols-2 gap-5 lg:grid-cols-4">
-        <div v-for="(p, index) in topSelling" :key="p.id" :data-testid="`home-top-selling-card-${index}`" class="group">
-          <div class="flex aspect-square items-center justify-center rounded-xl bg-cream text-5xl">
-            {{ p.icon }}
-          </div>
-          <p data-testid="product-name" class="mt-3 text-sm font-medium">{{ p.name }}</p>
-          <div class="mt-1 flex items-center gap-1 text-xs text-slate-500">
-            <span class="text-amber-400">★</span>{{ p.rating }}/5
-          </div>
-          <div class="mt-1 flex items-center gap-2 text-sm">
-            <span data-testid="product-price" class="font-semibold">${{ p.price }}</span>
-            <span v-if="p.old_price" class="text-slate-400 line-through">${{ p.old_price }}</span>
-          </div>
-        </div>
+        <ProductCard
+          v-for="(p, index) in topSelling"
+          :key="p.id"
+          :product="p"
+          :testid="`home-top-selling-card-${index}`"
+        />
       </div>
 
       <div class="mt-10 text-center">
-        <button data-testid="home-top-selling-view-all" class="rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium transition hover:bg-slate-50">
+        <RouterLink :to="{ name: 'shop' }" data-testid="home-top-selling-view-all" class="rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium transition hover:bg-slate-50">
           View All
-        </button>
+        </RouterLink>
       </div>
     </section>
 

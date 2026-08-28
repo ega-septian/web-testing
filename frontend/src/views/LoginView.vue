@@ -1,8 +1,9 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
@@ -19,7 +20,9 @@ const highlights = [
 async function handleSubmit() {
   const ok = await auth.login({ email: email.value, password: password.value })
   if (ok) {
-    router.push({ name: 'home' })
+    // Sent here by the router guard (e.g. from checkout) with where to go
+    // back to — falls back to the homepage otherwise.
+    router.push(route.query.redirect || { name: 'home' })
   }
 }
 </script>
