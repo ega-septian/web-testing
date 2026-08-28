@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: gastinweb-backend
+    runtime: go
+    rootDir: backend
+    plan: free
+    buildCommand: go build -o app ./cmd/api
+    startCommand: ./app
+    envVars:
+      # Filled in manually in the Render dashboard, not committed here:
+      # - DATABASE_URL: the Neon connection string
+      # - ALLOW_ORIGIN: the Cloudflare Pages URL, once that exists
+      - key: DATABASE_URL
+        sync: false
+      - key: ALLOW_ORIGIN
+        sync: false
+      # Render auto-generates a strong random value for this instead of
+      # reusing the "dev-secret-change-me" local default.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MAX_UPLOAD_MB
+        value: "5"
+      # UPLOAD_DIR is left at its default (./uploads) — note this directory
+      # is on ephemeral disk on Render's free plan, so uploaded product
+      # photos don't survive a redeploy. Fine for a demo; revisit with
+      # object storage (e.g. Cloudflare R2) if that becomes a problem.
