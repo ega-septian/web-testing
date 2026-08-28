@@ -30,12 +30,19 @@ func main() {
 	userRepo := models.NewUserRepo(pool)
 	assetRepo := models.NewAssetRepo(pool)
 	productRepo := models.NewProductRepo(pool)
+	productSizeRepo := models.NewProductSizeRepo(pool)
+	productImageRepo := models.NewProductImageRepo(pool)
+	saleRepo := models.NewSaleRepo(pool)
 	dressStyleRepo := models.NewDressStyleRepo(pool)
+	orderRepo := models.NewOrderRepo(pool)
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(userRepo, tokens)
 	maxUploadBytes := cfg.MaxUploadMB * 1024 * 1024
 	assetHandler := handlers.NewAssetHandler(assetRepo, cfg.UploadDir, maxUploadBytes)
-	catalogHandler := handlers.NewCatalogHandler(productRepo, dressStyleRepo)
+	catalogHandler := handlers.NewCatalogHandler(
+		productRepo, productSizeRepo, productImageRepo, saleRepo, dressStyleRepo, cfg.UploadDir, maxUploadBytes,
+	)
+	orderHandler := handlers.NewOrderHandler(orderRepo)
 
 	router := gin.Default()
 	router.MaxMultipartMemory = maxUploadBytes
@@ -72,7 +79,18 @@ func main() {
 		}
 
 		api.GET("/products", catalogHandler.ListProducts)
+		api.POST("/products", handlers.RequireAuth(tokens), catalogHandler.CreateProduct)
+		api.GET("/products/filters", catalogHandler.ListProductFilters)
+		api.GET("/products/:id", catalogHandler.GetProduct)
+		api.POST("/products/:id/sales", handlers.RequireAuth(tokens), catalogHandler.RecordSale)
 		api.GET("/dress-styles", catalogHandler.ListDressStyles)
+
+		orderGroup := api.Group("/orders", handlers.RequireAuth(tokens))
+		{
+			orderGroup.POST("", orderHandler.Checkout)
+			orderGroup.GET("", orderHandler.ListOrders)
+			orderGroup.GET("/:id", orderHandler.GetOrder)
+		}
 	}
 
 	log.Printf("TestStore API listening on :%s", cfg.Port)
