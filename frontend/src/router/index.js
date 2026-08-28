@@ -13,12 +13,6 @@ const routes = [
     component: () => import('../views/LoginView.vue'),
     meta: { requiresGuest: true },
   },
-  {
-    path: '/dashboard',
-    name: 'dashboard',
-    component: () => import('../views/DashboardView.vue'),
-    meta: { requiresAuth: true },
-  },
 ]
 
 const router = createRouter({
@@ -26,15 +20,13 @@ const router = createRouter({
   routes,
 })
 
+// A logged-in user opening /login is sent back to the homepage — there's no
+// separate authenticated area (dashboard) to land on instead.
 router.beforeEach((to) => {
   const auth = useAuthStore()
 
-  if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return { name: 'login' }
-  }
-
   if (to.meta.requiresGuest && auth.isAuthenticated) {
-    return { name: 'dashboard' }
+    return { name: 'home' }
   }
 })
 

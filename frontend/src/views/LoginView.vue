@@ -19,7 +19,7 @@ const highlights = [
 async function handleSubmit() {
   const ok = await auth.login({ email: email.value, password: password.value })
   if (ok) {
-    router.push({ name: 'dashboard' })
+    router.push({ name: 'home' })
   }
 }
 </script>

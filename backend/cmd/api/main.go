@@ -29,10 +29,13 @@ func main() {
 
 	userRepo := models.NewUserRepo(pool)
 	assetRepo := models.NewAssetRepo(pool)
+	productRepo := models.NewProductRepo(pool)
+	dressStyleRepo := models.NewDressStyleRepo(pool)
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(userRepo, tokens)
 	maxUploadBytes := cfg.MaxUploadMB * 1024 * 1024
 	assetHandler := handlers.NewAssetHandler(assetRepo, cfg.UploadDir, maxUploadBytes)
+	catalogHandler := handlers.NewCatalogHandler(productRepo, dressStyleRepo)
 
 	router := gin.Default()
 	router.MaxMultipartMemory = maxUploadBytes
@@ -67,6 +70,9 @@ func main() {
 			assetGroup.POST("/upload", handlers.RequireAuth(tokens), assetHandler.Upload)
 			assetGroup.DELETE("/:key", handlers.RequireAuth(tokens), assetHandler.Delete)
 		}
+
+		api.GET("/products", catalogHandler.ListProducts)
+		api.GET("/dress-styles", catalogHandler.ListDressStyles)
 	}
 
 	log.Printf("TestStore API listening on :%s", cfg.Port)

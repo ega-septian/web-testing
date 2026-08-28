@@ -5,3 +5,17 @@
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+.playwright/

@@ -2,12 +2,15 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { assetFileUrl, getAsset } from '../lib/api'
+import { assetFileUrl, getAsset, getProducts, getDressStyles } from '../lib/api'
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const heroBannerUrl = ref(null)
+const newArrivals = ref([])
+const topSelling = ref([])
+const dressStyles = ref([])
 
 onMounted(async () => {
   try {
@@ -16,32 +19,49 @@ onMounted(async () => {
   } catch {
     heroBannerUrl.value = null
   }
+
+  // Each catalog section fetches independently, so one failing (or the
+  // backend being briefly unavailable) doesn't take the whole page down —
+  // the section just renders empty instead of throwing.
+  try {
+    newArrivals.value = await getProducts('new_arrivals')
+  } catch {
+    newArrivals.value = []
+  }
+
+  try {
+    topSelling.value = await getProducts('top_selling')
+  } catch {
+    topSelling.value = []
+  }
+
+  try {
+    const styles = await getDressStyles()
+    // Each category's photo is a separate asset, keyed by naming convention
+    // (e.g. "Casual" -> "hero_casual_browse"). Fetched per-style so a missing
+    // photo for one category just falls back to a plain card, not a broken page.
+    dressStyles.value = await Promise.all(
+      styles.map(async (style) => {
+        try {
+          const asset = await getAsset(`hero_${style.name.toLowerCase()}_browse`)
+          return { ...style, imageUrl: assetFileUrl(asset) }
+        } catch {
+          return { ...style, imageUrl: null }
+        }
+      })
+    )
+  } catch {
+    dressStyles.value = []
+  }
 })
 
+// There's no separate authenticated page to send an already-logged-in user
+// to anymore — the homepage itself reflects the logged-in state (see the
+// navbar), so this CTA has nowhere left to go once authenticated.
 function goToCta() {
-  router.push({ name: auth.isAuthenticated ? 'dashboard' : 'login' })
+  if (auth.isAuthenticated) return
+  router.push({ name: 'login' })
 }
-
-const newArrivals = [
-  { name: 'T-shirt with Tape Details', icon: '👕', rating: 4.5, price: '$120' },
-  { name: 'Skinny Fit Jeans', icon: '👖', rating: 3.5, price: '$240', oldPrice: '$260' },
-  { name: 'Checkered Shirt', icon: '🧥', rating: 4.5, price: '$180' },
-  { name: 'Sleeve Striped T-shirt', icon: '👕', rating: 4.5, price: '$130', oldPrice: '$160' },
-]
-
-const topSelling = [
-  { name: 'Vertical Striped Shirt', icon: '🧥', rating: 5.0, price: '$212', oldPrice: '$232' },
-  { name: 'Courage Graphic T-shirt', icon: '👕', rating: 4.0, price: '$145' },
-  { name: 'Loose Fit Bermuda Shorts', icon: '🩳', rating: 3.0, price: '$80' },
-  { name: 'Faded Skinny Jeans', icon: '👖', rating: 4.5, price: '$210' },
-]
-
-const dressStyles = [
-  { name: 'Casual', color: 'bg-cream' },
-  { name: 'Formal', color: 'bg-cream' },
-  { name: 'Party', color: 'bg-cream' },
-  { name: 'Gym', color: 'bg-cream' },
-]
 
 const testimonials = [
   {
@@ -61,13 +81,13 @@ const testimonials = [
   },
 ]
 
-const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
+const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
 </script>
 
 <template>
   <div data-testid="home-page" class="min-h-screen bg-white font-sans text-slate-900">
-    <!-- Top promo bar -->
-    <div data-testid="home-promo-bar" class="bg-black py-2 text-center text-xs text-white sm:text-sm">
+    <!-- Top promo bar: only makes sense as an acquisition message for anonymous visitors -->
+    <div v-if="!auth.isAuthenticated" data-testid="home-promo-bar" class="bg-black py-2 text-center text-xs text-white sm:text-sm">
       Daftar dan dapatkan diskon 20% untuk pembelian pertama —
       <button data-testid="home-promo-bar-cta" class="ml-1 font-semibold underline underline-offset-2" @click="goToCta">Daftar Sekarang</button>
     </div>
@@ -98,12 +118,15 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
           </div>
           <button data-testid="home-cart-button" class="text-xl" title="Keranjang">🛒</button>
           <button
+            v-if="!auth.isAuthenticated"
             data-testid="home-navbar-cta"
             class="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
             @click="goToCta"
           >
             Masuk
           </button>
+          <!-- Logged in: no dedicated account page yet, icon is a placeholder for now -->
+          <button v-else data-testid="home-account-button" class="text-xl" title="Akun">👤</button>
         </div>
       </div>
     </header>
@@ -186,7 +209,7 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
       <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">NEW ARRIVALS</h2>
 
       <div class="mt-10 grid grid-cols-2 gap-5 lg:grid-cols-4">
-        <div v-for="(p, index) in newArrivals" :key="p.name" :data-testid="`home-new-arrival-card-${index}`" class="group">
+        <div v-for="(p, index) in newArrivals" :key="p.id" :data-testid="`home-new-arrival-card-${index}`" class="group">
           <div class="flex aspect-square items-center justify-center rounded-xl bg-cream text-5xl">
             {{ p.icon }}
           </div>
@@ -195,8 +218,8 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
             <span class="text-amber-400">★</span>{{ p.rating }}/5
           </div>
           <div class="mt-1 flex items-center gap-2 text-sm">
-            <span data-testid="product-price" class="font-semibold">{{ p.price }}</span>
-            <span v-if="p.oldPrice" class="text-slate-400 line-through">{{ p.oldPrice }}</span>
+            <span data-testid="product-price" class="font-semibold">${{ p.price }}</span>
+            <span v-if="p.old_price" class="text-slate-400 line-through">${{ p.old_price }}</span>
           </div>
         </div>
       </div>
@@ -213,7 +236,7 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
       <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">TOP SELLING</h2>
 
       <div class="mt-10 grid grid-cols-2 gap-5 lg:grid-cols-4">
-        <div v-for="(p, index) in topSelling" :key="p.name" :data-testid="`home-top-selling-card-${index}`" class="group">
+        <div v-for="(p, index) in topSelling" :key="p.id" :data-testid="`home-top-selling-card-${index}`" class="group">
           <div class="flex aspect-square items-center justify-center rounded-xl bg-cream text-5xl">
             {{ p.icon }}
           </div>
@@ -222,8 +245,8 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
             <span class="text-amber-400">★</span>{{ p.rating }}/5
           </div>
           <div class="mt-1 flex items-center gap-2 text-sm">
-            <span data-testid="product-price" class="font-semibold">{{ p.price }}</span>
-            <span v-if="p.oldPrice" class="text-slate-400 line-through">{{ p.oldPrice }}</span>
+            <span data-testid="product-price" class="font-semibold">${{ p.price }}</span>
+            <span v-if="p.old_price" class="text-slate-400 line-through">${{ p.old_price }}</span>
           </div>
         </div>
       </div>
@@ -243,11 +266,23 @@ const brands = ['VERSACE', 'ZARA', 'GUCCI', 'PRADA', 'Calvin Klein']
         <div class="mt-8 grid grid-cols-2 gap-4">
           <div
             v-for="(style, index) in dressStyles"
-            :key="style.name"
+            :key="style.id"
             :data-testid="`home-dress-style-card-${index}`"
-            class="flex h-32 items-center justify-center rounded-xl bg-white text-base font-semibold shadow-sm transition hover:shadow-md cursor-pointer sm:h-40"
+            class="relative flex h-32 overflow-hidden rounded-xl bg-white shadow-sm transition hover:shadow-md cursor-pointer sm:h-40"
+            :class="style.imageUrl ? 'items-end' : 'items-center justify-center'"
           >
-            {{ style.name }}
+            <img
+              v-if="style.imageUrl"
+              :src="style.imageUrl"
+              :alt="style.name"
+              class="absolute inset-0 h-full w-full object-cover object-top"
+            />
+            <span
+              class="relative z-10 text-base font-semibold"
+              :class="style.imageUrl ? 'w-full bg-gradient-to-t from-black/60 to-transparent px-4 py-3 text-white' : ''"
+            >
+              {{ style.name }}
+            </span>
           </div>
         </div>
       </div>

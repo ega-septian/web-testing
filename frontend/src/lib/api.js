@@ -43,6 +43,14 @@ export function getAsset(key) {
   return request(`/api/assets/${key}`, { method: 'GET' })
 }
 
+export function getProducts(section) {
+  return request(`/api/products?section=${encodeURIComponent(section)}`, { method: 'GET' })
+}
+
+export function getDressStyles() {
+  return request('/api/dress-styles', { method: 'GET' })
+}
+
 export function assetFileUrl(asset) {
   return `${BASE_URL}${asset.url}`
 }
