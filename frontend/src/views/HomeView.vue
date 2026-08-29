@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { assetFileUrl, getAssets, getProducts, getDressStyles } from '../lib/api'
+import { assetFileUrl, fileUrl, getAssets, getProducts, getProductFilters } from '../lib/api'
 import ProductCard from '../components/ProductCard.vue'
 
 const router = useRouter()
@@ -11,20 +11,16 @@ const auth = useAuthStore()
 const heroBannerUrl = ref(null)
 const newArrivals = ref([])
 const topSelling = ref([])
-const dressStyles = ref([])
+const categories = ref([])
 
 onMounted(async () => {
-  // One call covers every homepage image (hero banner + each dress-style
-  // photo) — looked up by key locally, instead of a separate GET per image.
-  let assetsByKey = {}
   try {
     const assets = await getAssets()
-    assetsByKey = Object.fromEntries(assets.map((asset) => [asset.key, asset]))
+    const assetsByKey = Object.fromEntries(assets.map((asset) => [asset.key, asset]))
+    heroBannerUrl.value = assetsByKey.hero_banner ? assetFileUrl(assetsByKey.hero_banner) : null
   } catch {
-    assetsByKey = {}
+    heroBannerUrl.value = null
   }
-
-  heroBannerUrl.value = assetsByKey.hero_banner ? assetFileUrl(assetsByKey.hero_banner) : null
 
   // Each catalog section fetches independently, so one failing (or the
   // backend being briefly unavailable) doesn't take the whole page down —
@@ -42,18 +38,27 @@ onMounted(async () => {
   }
 
   try {
-    const styles = await getDressStyles()
-    // Each category's photo follows a naming convention (e.g. "Casual" ->
-    // "hero_casual_browse") — missing photo for one category just falls back
-    // to a plain card, not a broken page.
-    dressStyles.value = styles.map((style) => {
-      const asset = assetsByKey[`hero_${style.name.toLowerCase()}_browse`]
-      return { ...style, imageUrl: asset ? assetFileUrl(asset) : null }
-    })
+    categories.value = await loadCategories()
   } catch {
-    dressStyles.value = []
+    categories.value = []
   }
 })
+
+// "Shop by Category" replaces the old "Browse by Dress Style" section, which
+// was disconnected from the real catalog (Casual/Formal/Party/Gym never
+// matched any actual product's category) and its cards weren't even
+// clickable. This is driven by the live category facet instead, so it's
+// always in sync with whatever products actually exist — each card's photo
+// is just the newest product in that category.
+async function loadCategories() {
+  const { category: options } = await getProductFilters()
+  return Promise.all(
+    options.map(async (opt) => {
+      const [product] = await getProducts({ category: opt.value, sort: 'newest', limit: 1 })
+      return { name: opt.value, count: opt.count, imageUrl: product?.image_url ? fileUrl(product.image_url) : null }
+    }),
+  )
+}
 
 // There's no separate authenticated page to send an already-logged-in user
 // to anymore — the site itself reflects the logged-in state (see Navbar.vue),
@@ -67,6 +72,17 @@ function goToCta() {
 // above, it was never really about login.
 function goToShop() {
   router.push({ name: 'shop' })
+}
+
+// Clicking a brand in the strip below jumps straight to the Shop page
+// pre-filtered to that brand (see ShopView.vue's brand checklist filter).
+function goToBrand(brand) {
+  router.push({ name: 'shop', query: { brand } })
+}
+
+// Same idea for a category card (see "Shop by Category" below).
+function goToCategory(category) {
+  router.push({ name: 'shop', query: { category } })
 }
 
 const testimonials = [
@@ -167,7 +183,16 @@ const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
     <!-- Brand strip -->
     <section data-testid="home-brand-strip" class="bg-black py-6">
       <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 text-lg font-bold tracking-wide text-white sm:justify-between">
-        <span v-for="(brand, index) in brands" :key="brand" :data-testid="`home-brand-item-${index}`">{{ brand }}</span>
+        <button
+          v-for="(brand, index) in brands"
+          :key="brand"
+          type="button"
+          :data-testid="`home-brand-item-${index}`"
+          class="transition hover:text-slate-300"
+          @click="goToBrand(brand)"
+        >
+          {{ brand }}
+        </button>
       </div>
     </section>
 
@@ -211,32 +236,34 @@ const brands = ['NEVADA', 'DISNEY', 'MARVEL', 'COLE', 'SUKO']
       </div>
     </section>
 
-    <!-- Browse by dress style -->
-    <section id="sale" data-testid="home-dress-style-section" class="mx-auto max-w-7xl px-6 pb-16">
+    <!-- Shop by category -->
+    <section id="sale" data-testid="home-category-section" class="mx-auto max-w-7xl px-6 pb-16">
       <div class="rounded-2xl bg-cream p-8">
-        <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">BROWSE BY DRESS STYLE</h2>
+        <h2 class="text-center font-display text-2xl tracking-tight sm:text-3xl">SHOP BY CATEGORY</h2>
 
         <div class="mt-8 grid grid-cols-2 gap-4">
-          <div
-            v-for="(style, index) in dressStyles"
-            :key="style.id"
-            :data-testid="`home-dress-style-card-${index}`"
-            class="relative flex h-32 overflow-hidden rounded-xl bg-white shadow-sm transition hover:shadow-md cursor-pointer sm:h-40"
-            :class="style.imageUrl ? 'items-end' : 'items-center justify-center'"
+          <button
+            v-for="(cat, index) in categories"
+            :key="cat.name"
+            type="button"
+            :data-testid="`home-category-card-${index}`"
+            class="relative flex h-32 overflow-hidden rounded-xl bg-white text-left shadow-sm transition hover:shadow-md sm:h-40"
+            :class="cat.imageUrl ? 'items-end' : 'items-center justify-center'"
+            @click="goToCategory(cat.name)"
           >
             <img
-              v-if="style.imageUrl"
-              :src="style.imageUrl"
-              :alt="style.name"
+              v-if="cat.imageUrl"
+              :src="cat.imageUrl"
+              :alt="cat.name"
               class="absolute inset-0 h-full w-full object-cover object-top"
             />
             <span
               class="relative z-10 text-base font-semibold"
-              :class="style.imageUrl ? 'w-full bg-gradient-to-t from-black/60 to-transparent px-4 py-3 text-white' : ''"
+              :class="cat.imageUrl ? 'w-full bg-gradient-to-t from-black/60 to-transparent px-4 py-3 text-white' : ''"
             >
-              {{ style.name }}
+              {{ cat.name }} <span class="font-normal opacity-80">({{ cat.count }})</span>
             </span>
-          </div>
+          </button>
         </div>
       </div>
     </section>

@@ -65,12 +65,13 @@ export function getAssets() {
 }
 
 // sort: "newest" (default, by created_at) or "best_selling" (by total units
-// sold). gender/category/subcategory/size are the Shop page's checklist
-// filters — each accepts an array for multi-select (e.g. gender: ['Pria',
-// 'Wanita']), sent as repeated query params; a plain string also works for a
-// single value. q is free-text search (name/brand/description) — what the
+// sold). brand/gender/category/subcategory/size are the Shop page's
+// checklist filters — each accepts an array for multi-select (e.g. gender:
+// ['Pria', 'Wanita']), sent as repeated query params; a plain string also
+// works for a single value (e.g. the homepage's brand strip linking straight
+// to one brand). q is free-text search (name/brand/description) — what the
 // homepage search box and the Shop page's own search field use.
-export function getProducts({ sort, limit, gender, category, subcategory, size, q } = {}) {
+export function getProducts({ sort, limit, brand, gender, category, subcategory, size, q } = {}) {
   const params = new URLSearchParams()
   if (sort) params.set('sort', sort)
   if (limit) params.set('limit', limit)
@@ -80,6 +81,7 @@ export function getProducts({ sort, limit, gender, category, subcategory, size, 
       if (v) params.append(key, v)
     }
   }
+  if (brand) appendAll('brand', brand)
   if (gender) appendAll('gender', gender)
   if (category) appendAll('category', category)
   if (subcategory) appendAll('subcategory', subcategory)
@@ -97,10 +99,6 @@ export function getProduct(id) {
 // "counts aren't narrowed by other active filters" trade-off.
 export function getProductFilters() {
   return request('/api/products/filters', { method: 'GET' })
-}
-
-export function getDressStyles() {
-  return request('/api/dress-styles', { method: 'GET' })
 }
 
 // No real checkout flow exists yet — this exists so a sale can be recorded
