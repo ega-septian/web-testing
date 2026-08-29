@@ -1,0 +1,138 @@
+name: API Homepage Tests
+
+# Runs the homepage API test suite (from the separate gastinweb-automation
+# repo) whenever backend or frontend code is pushed, or a PR into main wants
+# to merge them — so a regression there gets caught in CI, not after merge.
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/api-homepage-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/api-homepage-tests.yml'
+
+jobs:
+  homepage-api-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: teststore
+          POSTGRES_PASSWORD: teststore
+          POSTGRES_DB: teststore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U teststore"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://teststore:teststore@localhost:5432/teststore?sslmode=disable
+
+    steps:
+      - name: Checkout gastinweb (backend + frontend)
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # Migrations are plain numbered .sql files with no runner tool (see
+      # backend/migrations/README or CLAUDE.md) — applied in filename order,
+      # same as done manually in local dev.
+      - name: Apply database migrations
+        run: |
+          for f in backend/migrations/*.sql; do
+            echo "Applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup go run ./cmd/api > backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/health && exit 0
+            sleep 1
+          done
+          echo "Backend did not become healthy in time"; cat backend.log; exit 1
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          PORT: '8081'
+          JWT_SECRET: ci-test-secret
+          ALLOW_ORIGIN: http://localhost:5173
+
+      - name: Build and serve frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          nohup npx vite preview --port 5173 --strictPort > frontend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173 > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Frontend did not become healthy in time"; cat frontend.log; exit 1
+        env:
+          VITE_API_BASE_URL: http://localhost:8081
+
+      - name: Checkout gastinweb-automation
+        uses: actions/checkout@v4
+        with:
+          repository: ega-septian/gasntin-automation
+          path: automation
+
+      - name: Install automation dependencies
+        working-directory: automation
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: automation
+        run: npx playwright install --with-deps chromium
+
+      # Fresh CI database has no assets (no migration seeds one) — seed
+      # exactly one so the assets test's precondition actually holds here,
+      # the same way it already holds in local dev (uploaded manually once).
+      - name: Seed CI-only test data
+        working-directory: automation
+        run: node scripts/seed-ci-assets.mjs
+        env:
+          API_BASE_URL: http://localhost:8081
+
+      - name: Run homepage API tests
+        working-directory: automation
+        run: npx playwright test --project=api tests/api/homepage.spec.ts
+        env:
+          API_BASE_URL: http://localhost:8081
+          WEB_BASE_URL: http://localhost:5173
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          # QASE_API_TOKEN intentionally left unset — a CI run shouldn't
+          # silently create a new Run in Qase every push; sync manually via
+          # /automate-testcase's rules when that's actually wanted.
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: automation/playwright-report/
+          retention-days: 14
