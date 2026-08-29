@@ -33,14 +33,13 @@ func main() {
 	productSizeRepo := models.NewProductSizeRepo(pool)
 	productImageRepo := models.NewProductImageRepo(pool)
 	saleRepo := models.NewSaleRepo(pool)
-	dressStyleRepo := models.NewDressStyleRepo(pool)
 	orderRepo := models.NewOrderRepo(pool)
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(userRepo, tokens)
 	maxUploadBytes := cfg.MaxUploadMB * 1024 * 1024
 	assetHandler := handlers.NewAssetHandler(assetRepo, cfg.UploadDir, maxUploadBytes)
 	catalogHandler := handlers.NewCatalogHandler(
-		productRepo, productSizeRepo, productImageRepo, saleRepo, dressStyleRepo, cfg.UploadDir, maxUploadBytes,
+		productRepo, productSizeRepo, productImageRepo, saleRepo, cfg.UploadDir, maxUploadBytes,
 	)
 	orderHandler := handlers.NewOrderHandler(orderRepo)
 
@@ -83,7 +82,6 @@ func main() {
 		api.GET("/products/filters", catalogHandler.ListProductFilters)
 		api.GET("/products/:id", catalogHandler.GetProduct)
 		api.POST("/products/:id/sales", handlers.RequireAuth(tokens), catalogHandler.RecordSale)
-		api.GET("/dress-styles", catalogHandler.ListDressStyles)
 
 		orderGroup := api.Group("/orders", handlers.RequireAuth(tokens))
 		{

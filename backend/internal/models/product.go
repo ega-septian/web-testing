@@ -39,6 +39,7 @@ type FilterOption struct {
 // ProductFilterOptions is the full facet set for the Shop page's sidebar —
 // computed live from actual product data, not a hardcoded taxonomy.
 type ProductFilterOptions struct {
+	Brand       []FilterOption `json:"brand"`
 	Gender      []FilterOption `json:"gender"`
 	Category    []FilterOption `json:"category"`
 	Subcategory []FilterOption `json:"subcategory"`
@@ -50,6 +51,7 @@ type ProductFilterOptions struct {
 // the same dimension are OR'd together (e.g. Gender: ["Pria","Wanita"]
 // matches either), while different dimensions are AND'd.
 type ProductFilters struct {
+	Brand       []string
 	Gender      []string
 	Category    []string
 	Subcategory []string

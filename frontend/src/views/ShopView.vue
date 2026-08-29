@@ -9,10 +9,27 @@ const SHOP_PAGE_SIZE = 24
 const route = useRoute()
 const router = useRouter()
 
-const filterOptions = ref({ gender: [], category: [], subcategory: [], size: [] })
+// Every checklist dimension the Shop page filters on — also each a valid
+// homepage entry point (brand strip, category cards, ...) via ?<dimension>=.
+const FILTER_DIMENSIONS = ['brand', 'gender', 'category', 'subcategory', 'size']
+const EMPTY_FILTERS = Object.fromEntries(FILTER_DIMENSIONS.map((d) => [d, []]))
+
+// A dimension's query param arrives as a single string (one value linked
+// from elsewhere, e.g. the homepage) or an array (already multi-select) —
+// normalize either way.
+function queryToArray(raw) {
+  if (!raw) return []
+  return Array.isArray(raw) ? raw : [raw]
+}
+
+function filtersFromQuery(query) {
+  return Object.fromEntries(FILTER_DIMENSIONS.map((d) => [d, queryToArray(query[d])]))
+}
+
+const filterOptions = ref({ ...EMPTY_FILTERS })
 // Each dimension is a checklist — an array of currently-checked values, not
 // a single choice.
-const selected = ref({ gender: [], category: [], subcategory: [], size: [] })
+const selected = ref(filtersFromQuery(route.query))
 const products = ref([])
 const loading = ref(true)
 
@@ -24,18 +41,27 @@ onMounted(async () => {
   try {
     filterOptions.value = await getProductFilters()
   } catch {
-    filterOptions.value = { gender: [], category: [], subcategory: [], size: [] }
+    filterOptions.value = { ...EMPTY_FILTERS }
   }
   await loadProducts()
 })
 
-// Navigating here again from the homepage search (while already on the Shop
-// page) reuses this component instance instead of remounting it, so the
-// query-string change needs its own watcher rather than relying on onMounted.
+// Navigating here again from the homepage (search box, brand strip, category
+// cards, ...) while already on the Shop page reuses this component instance
+// instead of remounting it, so the query string needs its own watcher rather
+// than relying on onMounted.
 watch(
   () => route.query.q,
   (newQ) => {
     searchQuery.value = typeof newQ === 'string' ? newQ : ''
+    loadProducts()
+  },
+)
+
+watch(
+  () => FILTER_DIMENSIONS.map((d) => route.query[d]),
+  () => {
+    selected.value = filtersFromQuery(route.query)
     loadProducts()
   },
 )
@@ -74,7 +100,7 @@ function toggleFilter(dimension, value) {
 }
 
 function clearFilters() {
-  selected.value = { gender: [], category: [], subcategory: [], size: [] }
+  selected.value = { ...EMPTY_FILTERS }
   loadProducts()
 }
 
@@ -109,7 +135,28 @@ const hasActiveFilters = () => Object.values(selected.value).some((list) => list
       <div class="mt-8 grid gap-10 lg:grid-cols-[240px_1fr]">
         <!-- Filter sidebar -->
         <aside data-testid="shop-filter-sidebar" class="space-y-8">
-          <div v-if="filterOptions.gender.length" data-testid="shop-filter-gender">
+          <div v-if="filterOptions.brand.length" data-testid="shop-filter-brand">
+            <p class="text-sm font-semibold">Brand</p>
+            <ul class="mt-3 space-y-2">
+              <li v-for="opt in filterOptions.brand" :key="opt.value">
+                <label class="flex cursor-pointer items-center justify-between gap-2 text-sm text-slate-600 hover:text-black">
+                  <span class="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      :data-testid="`shop-filter-brand-${opt.value}`"
+                      class="h-4 w-4 rounded border-slate-300 accent-black"
+                      :checked="selected.brand.includes(opt.value)"
+                      @change="toggleFilter('brand', opt.value)"
+                    />
+                    {{ opt.value }}
+                  </span>
+                  <span class="text-slate-400">({{ opt.count }})</span>
+                </label>
+              </li>
+            </ul>
+          </div>
+
+          <div v-if="filterOptions.gender.length" data-testid="shop-filter-gender" class="border-t border-slate-200 pt-6">
             <p class="text-sm font-semibold">Gender</p>
             <ul class="mt-3 space-y-2">
               <li v-for="opt in filterOptions.gender" :key="opt.value">

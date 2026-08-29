@@ -32,26 +32,25 @@ var validBrands = map[string]bool{
 }
 
 // CatalogHandler serves browse data for the storefront homepage: products
-// (ranked by recency or sales), their detail pages, and dress-style
-// categories. Listing/detail is public; creating a product or recording a
-// sale requires auth (see main.go's route wiring).
+// (ranked by recency or sales) and their detail pages. Listing/detail is
+// public; creating a product or recording a sale requires auth (see
+// main.go's route wiring).
 type CatalogHandler struct {
 	products     *models.ProductRepo
 	productSizes *models.ProductSizeRepo
 	productImgs  *models.ProductImageRepo
 	sales        *models.SaleRepo
-	dressStyles  *models.DressStyleRepo
 	uploadDir    string
 	maxSizeBytes int64
 }
 
 func NewCatalogHandler(
 	products *models.ProductRepo, productSizes *models.ProductSizeRepo, productImgs *models.ProductImageRepo,
-	sales *models.SaleRepo, dressStyles *models.DressStyleRepo, uploadDir string, maxSizeBytes int64,
+	sales *models.SaleRepo, uploadDir string, maxSizeBytes int64,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		products: products, productSizes: productSizes, productImgs: productImgs, sales: sales,
-		dressStyles: dressStyles, uploadDir: uploadDir, maxSizeBytes: maxSizeBytes,
+		uploadDir: uploadDir, maxSizeBytes: maxSizeBytes,
 	}
 }
 
@@ -61,10 +60,10 @@ type recordSaleRequest struct {
 
 // ListProducts returns products ranked by ?sort= ("newest" or
 // "best_selling"), defaulting to "newest", capped at ?limit= (default
-// DefaultProductsLimit). Optionally narrowed by ?gender=, ?category=,
-// ?subcategory=, ?size= (all combinable, all optional), and by ?q= — a
-// free-text search against name/brand/description, used by the homepage
-// search box (which sends the user here, to the Shop page).
+// DefaultProductsLimit). Optionally narrowed by ?brand=, ?gender=,
+// ?category=, ?subcategory=, ?size= (all combinable, all optional), and by
+// ?q= — a free-text search against name/brand/description, used by the
+// homepage search box (which sends the user here, to the Shop page).
 func (h *CatalogHandler) ListProducts(c *gin.Context) {
 	sort := c.DefaultQuery("sort", "newest")
 
@@ -81,6 +80,7 @@ func (h *CatalogHandler) ListProducts(c *gin.Context) {
 	// Repeatable query params for checklist-style multi-select, e.g.
 	// ?gender=Pria&gender=Wanita.
 	filters := models.ProductFilters{
+		Brand:       c.QueryArray("brand"),
 		Gender:      c.QueryArray("gender"),
 		Category:    c.QueryArray("category"),
 		Subcategory: c.QueryArray("subcategory"),
@@ -101,7 +101,7 @@ func (h *CatalogHandler) ListProducts(c *gin.Context) {
 	c.JSON(http.StatusOK, products)
 }
 
-// ListProductFilters returns the Shop page's sidebar facets (Gender,
+// ListProductFilters returns the Shop page's sidebar facets (Brand, Gender,
 // Kategori, Sub Kategori, Ukuran) with counts, computed from live product
 // data. Simplification worth knowing: each facet's count is global — it
 // isn't narrowed by whatever other filters are currently applied, unlike
@@ -363,14 +363,4 @@ func (h *CatalogHandler) RecordSale(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, sale)
-}
-
-func (h *CatalogHandler) ListDressStyles(c *gin.Context) {
-	styles, err := h.dressStyles.List(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengambil daftar dress style"})
-		return
-	}
-
-	c.JSON(http.StatusOK, styles)
 }

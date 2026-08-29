@@ -68,6 +68,7 @@ func (r *ProductRepo) List(ctx context.Context, sort string, limit int, filters 
 		args = append(args, values)
 		conditions = append(conditions, fmt.Sprintf("%s = ANY($%d)", column, len(args)))
 	}
+	addAny("p.brand", filters.Brand)
 	addAny("p.gender", filters.Gender)
 	addAny("p.category", filters.Category)
 	addAny("p.subcategory", filters.Subcategory)
@@ -170,6 +171,10 @@ func (r *ProductRepo) filterFacet(ctx context.Context, column string) ([]FilterO
 // data — counts are global (not narrowed by other currently-applied
 // filters); see the handler doc comment for that trade-off.
 func (r *ProductRepo) FilterOptions(ctx context.Context) (*ProductFilterOptions, error) {
+	brand, err := r.filterFacet(ctx, "brand")
+	if err != nil {
+		return nil, err
+	}
 	gender, err := r.filterFacet(ctx, "gender")
 	if err != nil {
 		return nil, err
@@ -203,7 +208,7 @@ func (r *ProductRepo) FilterOptions(ctx context.Context) (*ProductFilterOptions,
 		return nil, err
 	}
 
-	return &ProductFilterOptions{Gender: gender, Category: category, Subcategory: subcategory, Size: size}, nil
+	return &ProductFilterOptions{Brand: brand, Gender: gender, Category: category, Subcategory: subcategory, Size: size}, nil
 }
 
 // Create adds a new product plus its per-size stock, in one transaction —
