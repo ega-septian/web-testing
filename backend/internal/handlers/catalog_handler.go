@@ -71,7 +71,7 @@ func (h *CatalogHandler) ListProducts(c *gin.Context) {
 	if raw := c.Query("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "parameter 'limit' harus bilangan bulat positif"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "parameter 'limit' harus bilangan bulat positif", "param": "limit"})
 			return
 		}
 		limit = parsed
@@ -91,7 +91,7 @@ func (h *CatalogHandler) ListProducts(c *gin.Context) {
 	products, err := h.products.List(c.Request.Context(), sort, limit, filters)
 	if err != nil {
 		if errors.Is(err, models.ErrInvalidSort) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "parameter 'sort' harus 'newest' atau 'best_selling'"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "parameter 'sort' harus 'newest' atau 'best_selling'", "param": "sort"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengambil daftar produk"})
