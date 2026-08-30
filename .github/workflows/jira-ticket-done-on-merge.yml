@@ -1,0 +1,93 @@
+name: Jira Ticket → Done on Merge
+
+# When a fix/feature branch named after a Jira ticket (the `fix/<KEY>-<slug>`
+# convention from the gastinweb-automation repo's /work-ticket command, e.g.
+# `fix/KAN-1-mobile-navbar`) is merged into main, this re-runs the same
+# automation pipeline that already gates the PR — now against main itself —
+# and only on a pass moves the ticket straight to Done. A merge whose branch
+# doesn't reference a ticket key is left alone (no-op), not treated as an
+# error.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  extract-ticket:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      ticket_key: ${{ steps.extract.outputs.key }}
+    steps:
+      - id: extract
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          KEY=$(echo "$BRANCH" | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)
+          if [ -z "$KEY" ]; then
+            echo "Branch '$BRANCH' doesn't reference a Jira ticket key — skipping the Done transition."
+          else
+            echo "Found ticket key $KEY in branch '$BRANCH'."
+          fi
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+  # Reuses api-homepage-tests.yml's own job rather than duplicating its ~20
+  # steps here — see the workflow_call trigger added to that file. This is
+  # the actual gate for the Done transition below, run fresh against main
+  # after the merge (not just trusting the PR's own pre-merge check).
+  run-automation:
+    needs: extract-ticket
+    if: needs.extract-ticket.outputs.ticket_key != ''
+    uses: ./.github/workflows/api-homepage-tests.yml
+
+  mark-jira-done:
+    needs: [extract-ticket, run-automation]
+    if: needs.extract-ticket.outputs.ticket_key != ''
+    runs-on: ubuntu-latest
+    steps:
+      # Looks up the actual "Done" transition ID rather than hardcoding one,
+      # and fails loudly with the available transitions listed if it's
+      # missing (e.g. workflow changed, or the ticket isn't in a state that
+      # can move to Done) — same fail-fast-over-silent-skip philosophy as
+      # the automation suite's global setup.
+      - name: Transition ${{ needs.extract-ticket.outputs.ticket_key }} to Done
+        env:
+          JIRA_BASE_URL: https://septianega-18.atlassian.net
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          TICKET_KEY: ${{ needs.extract-ticket.outputs.ticket_key }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          AUTH="$JIRA_EMAIL:$JIRA_API_TOKEN"
+          API="$JIRA_BASE_URL/rest/api/3/issue/$TICKET_KEY"
+
+          status=$(curl -sf -u "$AUTH" "$API?fields=status" | jq -r '.fields.status.name')
+          echo "Current status of $TICKET_KEY: $status"
+
+          if [ "$status" = "Done" ]; then
+            echo "Already Done — nothing to do."
+            exit 0
+          fi
+
+          transitions=$(curl -sf -u "$AUTH" "$API/transitions")
+          done_id=$(echo "$transitions" | jq -r '.transitions[] | select(.name == "Done") | .id')
+
+          if [ -z "$done_id" ]; then
+            echo "No 'Done' transition available from status '$status'. Available transitions:"
+            echo "$transitions" | jq -r '.transitions[] | "  \(.id): \(.name)"'
+            exit 1
+          fi
+
+          curl -sf -u "$AUTH" -X POST -H "Content-Type: application/json" \
+            -d "{\"transition\": {\"id\": \"$done_id\"}}" \
+            "$API/transitions"
+
+          comment_body=$(jq -n --arg text "Merged to main and the automation pipeline passed — moving to Done. PR: $PR_URL" \
+            '{body: {type: "doc", version: 1, content: [{type: "paragraph", content: [{type: "text", text: $text}]}]}}')
+
+          curl -sf -u "$AUTH" -X POST -H "Content-Type: application/json" \
+            -d "$comment_body" \
+            "$API/comment"
+
+          echo "Transitioned $TICKET_KEY to Done."

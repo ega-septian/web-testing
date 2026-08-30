@@ -3,9 +3,15 @@ name: API Homepage Tests
 # Runs the homepage API test suite (from the separate gastinweb-automation
 # repo) whenever backend or frontend code is pushed, or a PR into main wants
 # to merge them — so a regression there gets caught in CI, not after merge.
+#
+# `main` itself is excluded from the push trigger: a merge into main is
+# already covered pre-merge by the pull_request trigger below, and again
+# post-merge by jira-ticket-done-on-merge.yml calling this workflow via
+# workflow_call — running it a third time from a plain push to main would
+# just be a duplicate, not extra coverage.
 on:
   push:
-    branches: ['**']
+    branches-ignore: [main]
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -16,6 +22,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - '.github/workflows/api-homepage-tests.yml'
+  workflow_call:
 
 jobs:
   homepage-api-tests:
