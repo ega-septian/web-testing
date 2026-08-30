@@ -10,6 +10,14 @@ const cart = useCartStore()
 
 const searchQuery = ref('')
 
+// Below the `lg` breakpoint the nav links and search box collapse into this
+// hamburger-triggered panel (see template) instead of disappearing outright.
+const isMobileMenuOpen = ref(false)
+
+function closeMobileMenu() {
+  isMobileMenuOpen.value = false
+}
+
 // There's no separate authenticated page to send an already-logged-in user
 // to — the whole site already reflects login state (this navbar included),
 // so this CTA has nowhere left to go once authenticated.
@@ -26,6 +34,7 @@ function submitSearch() {
   if (!q) return
   router.push({ name: 'shop', query: { q } })
   searchQuery.value = ''
+  closeMobileMenu()
 }
 
 // The cart is intentionally NOT cleared here — it's per-browser, not tied to
@@ -99,7 +108,43 @@ function handleLogout() {
             Keluar
           </button>
         </template>
+
+        <!-- Toggles the collapsible panel below that carries the nav links
+             and search box once they no longer fit in the header itself. -->
+        <button
+          type="button"
+          data-testid="navbar-mobile-menu-toggle"
+          class="text-xl lg:hidden"
+          :aria-expanded="isMobileMenuOpen"
+          title="Menu"
+          @click="isMobileMenuOpen = !isMobileMenuOpen"
+        >
+          {{ isMobileMenuOpen ? '✕' : '☰' }}
+        </button>
       </div>
+    </div>
+
+    <div v-if="isMobileMenuOpen" data-testid="navbar-mobile-menu" class="border-t border-slate-200 px-6 py-4 lg:hidden">
+      <!-- Only shown below `sm`: from `sm` up, the header's own search box
+           (just above) is already visible, so this would be a duplicate. -->
+      <div class="mb-4 flex items-center rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-500 sm:hidden">
+        <button type="button" data-testid="navbar-mobile-search-submit" class="mr-2" title="Cari" @click="submitSearch">🔍</button>
+        <input
+          v-model="searchQuery"
+          type="text"
+          data-testid="navbar-mobile-search-input"
+          placeholder="Cari produk..."
+          class="w-full bg-transparent outline-none placeholder:text-slate-400"
+          @keyup.enter="submitSearch"
+        />
+      </div>
+
+      <nav class="flex flex-col gap-4 text-sm font-medium text-slate-600">
+        <RouterLink :to="{ name: 'shop' }" data-testid="navbar-mobile-link-shop" class="hover:text-black" @click="closeMobileMenu">Shop</RouterLink>
+        <RouterLink :to="{ name: 'home', hash: '#sale' }" data-testid="navbar-mobile-link-sale" class="hover:text-black" @click="closeMobileMenu">On Sale</RouterLink>
+        <RouterLink :to="{ name: 'home', hash: '#new' }" data-testid="navbar-mobile-link-new-arrivals" class="hover:text-black" @click="closeMobileMenu">New Arrivals</RouterLink>
+        <RouterLink :to="{ name: 'home', hash: '#brands' }" data-testid="navbar-mobile-link-brands" class="hover:text-black" @click="closeMobileMenu">Brands</RouterLink>
+      </nav>
     </div>
   </header>
 </template>
