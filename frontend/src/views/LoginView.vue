@@ -20,6 +20,9 @@ const highlights = [
 async function handleSubmit() {
   const ok = await auth.login({ email: email.value, password: password.value })
   if (ok) {
+    // Brief deliberate pause so the button's reverted state (enabled,
+    // "Masuk" text, no spinner) is actually visible before we navigate away.
+    await new Promise((resolve) => setTimeout(resolve, 300))
     // Sent here by the router guard (e.g. from checkout) with where to go
     // back to — falls back to the homepage otherwise.
     router.push(route.query.redirect || { name: 'home' })
