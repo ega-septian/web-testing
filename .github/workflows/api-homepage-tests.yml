@@ -24,8 +24,19 @@ on:
       - '.github/workflows/api-homepage-tests.yml'
   workflow_call:
 
+# Cancels a stale in-progress run for the same ref once a newer push/PR
+# update supersedes it, instead of letting both race to completion.
+concurrency:
+  group: api-homepage-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   homepage-api-tests:
+    # Generous buffer over a normal run (Go/Node setup, two npm installs, a
+    # Playwright browser install, then the suite itself) without being an
+    # open-ended hang if the backend/frontend readiness loop or a step gets
+    # stuck.
+    timeout-minutes: 15
     runs-on: ubuntu-latest
 
     services:

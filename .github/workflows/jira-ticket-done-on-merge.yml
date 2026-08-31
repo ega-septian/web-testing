@@ -16,6 +16,9 @@ jobs:
   extract-ticket:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    # A single, near-instant shell step (regex against the branch name) —
+    # only a small buffer over that is needed.
+    timeout-minutes: 2
     outputs:
       ticket_key: ${{ steps.extract.outputs.key }}
     steps:
@@ -44,6 +47,10 @@ jobs:
     needs: [extract-ticket, run-automation]
     if: needs.extract-ticket.outputs.ticket_key != ''
     runs-on: ubuntu-latest
+    # A handful of sequential Jira REST calls (status lookup, transitions
+    # lookup, transition, comment) — a few seconds normally, this just
+    # guards against a hung/slow Jira API call.
+    timeout-minutes: 5
     steps:
       # Looks up the actual "Done" transition ID rather than hardcoding one,
       # and fails loudly with the available transitions listed if it's
