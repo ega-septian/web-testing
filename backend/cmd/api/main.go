@@ -81,6 +81,7 @@ func main() {
 		api.POST("/products", handlers.RequireAuth(tokens), catalogHandler.CreateProduct)
 		api.GET("/products/filters", catalogHandler.ListProductFilters)
 		api.GET("/products/:id", catalogHandler.GetProduct)
+		api.DELETE("/products/:id", handlers.RequireAuth(tokens), catalogHandler.DeleteProduct)
 		api.POST("/products/:id/sales", handlers.RequireAuth(tokens), catalogHandler.RecordSale)
 
 		orderGroup := api.Group("/orders", handlers.RequireAuth(tokens))

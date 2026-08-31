@@ -335,6 +335,26 @@ func (h *CatalogHandler) CreateProduct(c *gin.Context) {
 	c.JSON(http.StatusCreated, product)
 }
 
+// DeleteProduct soft-deletes a product (sets deleted_at instead of removing
+// the row — see ProductRepo.SoftDelete) so it disappears from every public
+// listing/detail/filter immediately, without touching its size/image/sale
+// rows or any order_items that reference it. Meant for cleaning up
+// test-seeded data — the storefront itself never calls this.
+func (h *CatalogHandler) DeleteProduct(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := h.products.SoftDelete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, models.ErrProductNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "produk tidak ditemukan"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menghapus produk"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 // RecordSale logs a sale event for a product, feeding the "best_selling"
 // sort. There's no real checkout flow to call this automatically yet — it's
 // meant to be called directly (manually, or by whatever replaces this later).

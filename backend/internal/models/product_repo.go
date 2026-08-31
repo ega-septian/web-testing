@@ -56,7 +56,7 @@ func (r *ProductRepo) List(ctx context.Context, sort string, limit int, filters 
 		return nil, ErrInvalidSort
 	}
 
-	var conditions []string
+	conditions := []string{"p.deleted_at IS NULL"}
 	var args []any
 
 	// Multiple values within one dimension are OR'd (checklist semantics):
@@ -130,7 +130,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id string) (*Product, error) 
 		SELECT %s
 		FROM products p
 		LEFT JOIN sales s ON s.product_id = p.id
-		WHERE p.id = $1
+		WHERE p.id = $1 AND p.deleted_at IS NULL
 		GROUP BY p.id`, productSelectColumns)
 
 	p, err := scanProduct(r.pool.QueryRow(ctx, query, id))
@@ -148,7 +148,8 @@ func (r *ProductRepo) GetByID(ctx context.Context, id string) (*Product, error) 
 // skipping the empty string (products that were never given a value for it).
 func (r *ProductRepo) filterFacet(ctx context.Context, column string) ([]FilterOption, error) {
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(
-		`SELECT %s, COUNT(*) FROM products WHERE %s != '' GROUP BY %s ORDER BY %s ASC`, column, column, column, column,
+		`SELECT %s, COUNT(*) FROM products WHERE %s != '' AND deleted_at IS NULL GROUP BY %s ORDER BY %s ASC`,
+		column, column, column, column,
 	))
 	if err != nil {
 		return nil, err
@@ -189,7 +190,10 @@ func (r *ProductRepo) FilterOptions(ctx context.Context) (*ProductFilterOptions,
 	}
 
 	sizeRows, err := r.pool.Query(ctx,
-		`SELECT size, COUNT(DISTINCT product_id) FROM product_sizes GROUP BY size ORDER BY size ASC`,
+		`SELECT ps.size, COUNT(DISTINCT ps.product_id)
+		 FROM product_sizes ps
+		 JOIN products p ON p.id = ps.product_id AND p.deleted_at IS NULL
+		 GROUP BY ps.size ORDER BY ps.size ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -209,6 +213,27 @@ func (r *ProductRepo) FilterOptions(ctx context.Context) (*ProductFilterOptions,
 	}
 
 	return &ProductFilterOptions{Brand: brand, Gender: gender, Category: category, Subcategory: subcategory, Size: size}, nil
+}
+
+// SoftDelete marks a product as deleted (setting deleted_at) rather than
+// removing the row — every other query in this file already excludes
+// deleted_at IS NOT NULL, so a soft-deleted product disappears from listings,
+// detail, and filter facets immediately, without touching order_items that
+// reference it (a hard delete would risk breaking a real customer's order
+// history, even with ON DELETE SET NULL, by silently blanking their
+// order's product reference). Returns ErrProductNotFound if no row matched
+// (already deleted, or never existed).
+func (r *ProductRepo) SoftDelete(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE products SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, id,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrProductNotFound
+	}
+	return nil
 }
 
 // Create adds a new product plus its per-size stock, in one transaction —
