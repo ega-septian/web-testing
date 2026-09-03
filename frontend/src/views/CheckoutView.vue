@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
-import { checkout, formatRupiah, ApiError } from '../lib/api'
+import { checkout, formatRupiah, getProduct, ApiError } from '../lib/api'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -13,12 +13,46 @@ const address = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
 
+// Live stock per product, keyed by productId -> that product's `sizes`
+// array, fetched fresh every time the Checkout page is opened — same
+// approach as the Cart page (GASNTIN-42) — so a line item that became
+// over-stock after being added to the cart is flagged here too, before
+// the form is even touched (GASNTIN-49).
+const stockByProduct = ref({})
+
+async function loadStock() {
+  const productIds = [...new Set(cart.items.map((item) => item.productId))]
+  const products = await Promise.all(productIds.map((id) => getProduct(id).catch(() => null)))
+  const map = {}
+  productIds.forEach((id, index) => {
+    if (products[index]) map[id] = products[index].sizes ?? []
+  })
+  stockByProduct.value = map
+}
+
+// Returns null while stock hasn't been fetched yet (or the product/size
+// couldn't be resolved), so the template can tell "unknown" apart from "0".
+function stockFor(item) {
+  const sizes = stockByProduct.value[item.productId]
+  if (!sizes) return null
+  return sizes.find((s) => s.size === item.size)?.stock ?? 0
+}
+
+// True once real stock has dropped below what's already in the cart —
+// surfaced as an inline warning naming the product and size (GASNTIN-49).
+function isOverStock(item) {
+  const stock = stockFor(item)
+  return stock !== null && item.quantity > stock
+}
+
 // Landing here with nothing to check out (direct URL, or already checked
 // out in another tab) has nowhere useful to go but back to the cart.
 onMounted(() => {
   if (cart.items.length === 0) {
     router.replace({ name: 'cart' })
+    return
   }
+  loadStock()
 })
 
 async function handleSubmit() {
@@ -114,10 +148,18 @@ async function handleSubmit() {
               v-for="(item, index) in cart.items"
               :key="`${item.productId}-${item.size}`"
               :data-testid="`checkout-summary-item-${index}`"
-              class="flex items-center justify-between gap-3 text-sm"
             >
-              <span class="min-w-0 truncate text-slate-600">{{ item.name }} ({{ item.size }}) × {{ item.quantity }}</span>
-              <span class="shrink-0 font-medium">{{ formatRupiah(item.price * item.quantity) }}</span>
+              <div class="flex items-center justify-between gap-3 text-sm">
+                <span class="min-w-0 truncate text-slate-600">{{ item.name }} ({{ item.size }}) × {{ item.quantity }}</span>
+                <span class="shrink-0 font-medium">{{ formatRupiah(item.price * item.quantity) }}</span>
+              </div>
+              <p
+                v-if="isOverStock(item)"
+                :data-testid="`checkout-summary-overstock-${index}`"
+                class="mt-1 text-xs font-medium text-red-500"
+              >
+                {{ item.name }} (ukuran {{ item.size }}): Kuantitas melebihi stok yang tersedia.
+              </p>
             </li>
           </ul>
           <div class="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 text-sm">
