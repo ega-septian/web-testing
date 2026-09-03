@@ -71,9 +71,17 @@ function decrementQuantity() {
 }
 
 // Adds the currently selected size + quantity as one line item (see
-// stores/cart.js — client-side only, no backend order system yet).
+// stores/cart.js — client-side only, no backend order system yet). Clamped
+// against what's already in the Cart for this same product/size, so adding
+// again can't push the combined quantity past available stock (GASNTIN-48).
 function addToCart() {
   if (selectedSizeStock.value === 0) return
+
+  const alreadyInCart =
+    cart.items.find((item) => item.productId === product.value.id && item.size === selectedSize.value)
+      ?.quantity ?? 0
+  const room = selectedSizeStock.value - alreadyInCart
+  if (room <= 0) return
 
   cart.addItem({
     productId: product.value.id,
@@ -82,7 +90,7 @@ function addToCart() {
     imageUrl: mainImageUrl.value,
     price: product.value.price,
     size: selectedSize.value,
-    quantity: quantity.value,
+    quantity: Math.min(quantity.value, room),
   })
 
   // Brief "Ditambahkan ✓" confirmation on the button itself, since there's no
