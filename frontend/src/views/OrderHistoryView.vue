@@ -4,12 +4,13 @@ import { getOrders, formatRupiah } from '../lib/api'
 
 const orders = ref([])
 const loading = ref(true)
+const loadError = ref(false)
 
 onMounted(async () => {
   try {
     orders.value = await getOrders()
   } catch {
-    orders.value = []
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -22,6 +23,11 @@ onMounted(async () => {
       <h1 data-testid="order-history-heading" class="font-display text-3xl tracking-tight">Riwayat Pesanan</h1>
 
       <div v-if="loading" class="py-16 text-center text-slate-400">Memuat...</div>
+
+      <div v-else-if="loadError" data-testid="order-history-error-state" class="py-24 text-center text-slate-400">
+        <p class="text-6xl">⚠️</p>
+        <p class="mt-4 text-sm">Gagal memuat riwayat pesanan. Silakan coba lagi.</p>
+      </div>
 
       <div v-else-if="orders.length === 0" data-testid="order-history-empty-state" class="py-24 text-center text-slate-400">
         <p class="text-6xl">📦</p>
